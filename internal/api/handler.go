@@ -5,6 +5,7 @@ import (
 	"dag-mpt-app/internal/storage"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
@@ -62,15 +63,43 @@ func (api *API) GetTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) GetAllTransactions(w http.ResponseWriter, r *http.Request) {
-	txs, err := api.storage.GetAllTransactions()
+	// Parse query parameters for pagination
+	pageStr := r.URL.Query().Get("page")
+	limitStr := r.URL.Query().Get("limit")
+
+	// Default to page 1 and limit 10 if not provided
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 10
+	}
+
+	txs, total, err := api.storage.GetAllTransactions(page, limit)
 	if err != nil {
 		api.logger.Error().Err(err).Msg("Failed to get all transactions")
-		api.writeJSONResponse(w, http.StatusInternalServerError, map[string]string{"error": "Failed to get all transactions -- " + err.Error()})
+		api.writeJSONResponse(w, http.StatusInternalServerError, map[string]string{"error": "Failed to retrieve transactions"})
 		return
 	}
 
-	api.logger.Info().Int("count", len(txs)).Msg("All transactions retrieved")
-	api.writeJSONResponse(w, http.StatusOK, txs)
+	// Calculate total pages
+	totalPages := (total + limit - 1) / limit
+
+	// Prepare response with pagination metadata
+	response := map[string]interface{}{
+		"transactions": txs,
+		"pagination": map[string]int{
+			"current_page": page,
+			"limit":        limit,
+			"total":        total,
+			"total_pages":  totalPages,
+		},
+	}
+
+	api.logger.Info().Int("count", len(txs)).Int("page", page).Int("limit", limit).Msg("All transactions retrieved")
+	api.writeJSONResponse(w, http.StatusOK, response)
 }
 
 func (api *API) DeleteTransaction(w http.ResponseWriter, r *http.Request) {

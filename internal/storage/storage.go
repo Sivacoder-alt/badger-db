@@ -43,8 +43,10 @@ func (s *Storage) GetTransaction(id string) (models.Transaction, error) {
 	return tx, nil
 }
 
-func (s *Storage) GetAllTransactions() ([]models.Transaction, error) {
+func (s *Storage) GetAllTransactions(page, limit int) ([]models.Transaction, int, error) {
 	var txs []models.Transaction
+	var total int
+
 	err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = true
@@ -52,24 +54,38 @@ func (s *Storage) GetAllTransactions() ([]models.Transaction, error) {
 		defer iter.Close()
 
 		prefix := []byte("tx:")
+		// Count total transactions
 		for iter.Seek(prefix); iter.ValidForPrefix(prefix); iter.Next() {
-			item := iter.Item()
-			var tx models.Transaction
-			err := item.Value(func(val []byte) error {
-				return json.Unmarshal(val, &tx)
-			})
-			if err != nil {
-				return err
+			total++
+		}
+
+		// Calculate offset and fetch paginated transactions
+		offset := (page - 1) * limit
+		current := 0
+		iter.Seek(prefix)
+		for iter.ValidForPrefix(prefix) && len(txs) < limit {
+			if current >= offset {
+				item := iter.Item()
+				var tx models.Transaction
+				err := item.Value(func(val []byte) error {
+					return json.Unmarshal(val, &tx)
+				})
+				if err != nil {
+					return err
+				}
+				txs = append(txs, tx)
 			}
-			txs = append(txs, tx)
+			current++
+			iter.Next()
 		}
 		return nil
 	})
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to retrieve all transactions")
-		return nil, err
+		return nil, 0, err
 	}
-	return txs, nil
+	s.logger.Info().Int("count", len(txs)).Int("page", page).Int("limit", limit).Msg("Paginated transactions retrieved")
+	return txs, total, nil
 }
 
 func (s *Storage) DeleteTransaction(id string) error {
