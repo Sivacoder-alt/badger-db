@@ -63,11 +63,8 @@ func (api *API) GetTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) GetAllTransactions(w http.ResponseWriter, r *http.Request) {
-	// Parse query parameters for pagination
 	pageStr := r.URL.Query().Get("page")
 	limitStr := r.URL.Query().Get("limit")
-
-	// Default to page 1 and limit 10 if not provided
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page < 1 {
 		page = 1
@@ -84,10 +81,8 @@ func (api *API) GetAllTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate total pages
 	totalPages := (total + limit - 1) / limit
 
-	// Prepare response with pagination metadata
 	response := map[string]interface{}{
 		"transactions": txs,
 		"pagination": map[string]int{
